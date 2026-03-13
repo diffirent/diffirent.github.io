@@ -114,7 +114,7 @@
                     reader.readAsDataURL(file);
                 });
 
-                const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+                const model = genAI.getGenerativeModel({ model: "models/gemini-1.5-flash" });
                 
                 // 內建定位建議與分類細則
                 const prompt = "你現在是台灣的環保專家。請辨識圖中物品，告訴我：1.物品名稱 2.分類類別(資源回收/一般/廚餘) 3.若是回收請說出細項。請用繁體中文，50字內回答。";
@@ -171,5 +171,6 @@
 </body>
 
 </html>
+
 
 
