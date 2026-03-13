@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>AI 綠色助手</title>
+    <meta name="theme-color" content="#2E7D32">
+    <style>
+        :root { --primary: #2E7D32; --accent: #4CAF50; --bg: #f5f7f2; }
+        body { 
+            font-family: -apple-system, system-ui, sans-serif; 
+            background: var(--bg); margin: 0; padding: 0; color: #333;
+        }
+        .header { background: var(--primary); color: white; padding: 20px; text-align: center; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        .main-content { padding: 20px; max-width: 500px; margin: 0 auto; }
+        
+        /* 拍照按鈕卡片 */
+        .camera-card { 
+            background: white; border-radius: 20px; padding: 30px; 
+            text-align: center; box-shadow: 0 4px 15px rgba(0,0,0,0.05); margin-bottom: 20px;
+        }
+        .btn-capture {
+            background: var(--primary); color: white; border: none; padding: 15px 30px;
+            border-radius: 50px; font-size: 1.1rem; font-weight: bold; width: 100%;
+            cursor: pointer; box-shadow: 0 4px 12px rgba(46, 125, 50, 0.3);
+        }
+
+        /* 預覽與載入 */
+        #preview { width: 100%; border-radius: 15px; margin-top: 15px; display: none; }
+        .loader { display: none; margin: 20px auto; width: 30px; height: 30px; border: 4px solid #f3f3f3; border-top: 4px solid var(--primary); border-radius: 50%; animation: spin 1s linear infinite; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+
+        /* 結果區塊 */
+        #result-box { 
+            background: #e8f5e9; padding: 15px; border-radius: 15px; 
+            margin-top: 15px; border-left: 5px solid var(--primary); display: none;
+        }
+
+        /* 歷史紀錄區塊 */
+        .history-section { margin-top: 30px; }
+        .history-title { font-weight: bold; margin-bottom: 10px; display: flex; justify-content: space-between; }
+        .history-item { 
+            background: white; padding: 12px; border-radius: 12px; margin-bottom: 10px;
+            font-size: 0.9rem; display: flex; align-items: center; box-shadow: 0 2px 5px rgba(0,0,0,0.03);
+        }
+        .history-item span { flex: 1; }
+        .history-tag { background: #eee; padding: 2px 8px; border-radius: 4px; font-size: 0.7rem; margin-left: 10px; }
+    </style>
+</head>
+<body>
+
+    <div class="header">
+        <h2 style="margin:0">♻️ AI 垃圾辨識助手</h2>
+    </div>
+
+    <div class="main-content">
+        <div class="camera-card">
+            <label class="btn-capture">
+                📷 拍照辨識垃圾
+                <input type="file" id="cam" accept="image/*" capture="camera" style="display:none">
+            </label>
+            <img id="preview">
+            <div class="loader" id="loader"></div>
+            <div id="result-box">
+                <strong>辨識結果：</strong>
+                <p id="res-text" style="margin:5px 0"></p>
+            </div>
+        </div>
+
+        <div class="history-section">
+            <div class="history-title">
+                <span>最近辨識紀錄</span>
+                <span style="color:red; font-size: 0.8rem;" onclick="clearHistory()">清除全部</span>
+            </div>
+            <div id="history-list"></div>
+        </div>
+    </div>
+
+    <script type="importmap">
+    { "imports": { "@google/generative-ai": "https://esm.run/@google/generative-ai" } }
+    </script>
+
+    <script type="module">
+        import { GoogleGenerativeAI } from "@google/generative-ai";
+        
+        // ⚠️ 記得填入你的 API KEY
+        const API_KEY = "你的_API_KEY"; 
+        const genAI = new GoogleGenerativeAI(API_KEY);
+
+        const cam = document.getElementById('cam');
+        const resBox = document.getElementById('result-box');
+        const resText = document.getElementById('res-text');
+        const preview = document.getElementById('preview');
+        const loader = document.getElementById('loader');
+        const historyList = document.getElementById('history-list');
+
+        // 初始化：讀取舊紀錄
+        window.onload = renderHistory;
+
+        cam.addEventListener('change', async (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            // UI 狀態切換
+            preview.src = URL.createObjectURL(file);
+            preview.style.display = 'block';
+            resBox.style.display = 'none';
+            loader.style.display = 'block';
+
+            try {
+                const base64 = await new Promise(r => {
+                    const reader = new FileReader();
+                    reader.onloadend = () => r(reader.result.split(',')[1]);
+                    reader.readAsDataURL(file);
+                });
+
+                const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+                
+                // 內建定位建議與分類細則
+                const prompt = "你現在是台灣的環保專家。請辨識圖中物品，告訴我：1.物品名稱 2.分類類別(資源回收/一般/廚餘) 3.若是回收請說出細項。請用繁體中文，50字內回答。";
+
+                const result = await model.generateContent([
+                    prompt, { inlineData: { data: base64, mimeType: file.type } }
+                ]);
+
+                const text = result.response.text();
+                
+                // 1. 顯示結果與手機回饋
+                resText.innerText = text;
+                resBox.style.display = 'block';
+                if (navigator.vibrate) navigator.vibrate([100, 50, 100]); // 震動兩下
+
+                // 2. 語音朗讀
+                const speak = new SpeechSynthesisUtterance(text);
+                speak.lang = 'zh-TW';
+                window.speechSynthesis.speak(speak);
+
+                // 3. 儲存到歷史紀錄
+                saveHistory(text);
+
+            } catch (err) {
+                resText.innerText = "失敗：" + err.message;
+                resBox.style.display = 'block';
+            } finally {
+                loader.style.display = 'none';
+            }
+        });
+
+        function saveHistory(text) {
+            let logs = JSON.parse(localStorage.getItem('trash_logs') || '[]');
+            logs.unshift({ text: text, time: new Date().toLocaleTimeString() });
+            localStorage.setItem('trash_logs', JSON.stringify(logs.slice(0, 10))); // 只存最近10筆
+            renderHistory();
+        }
+
+        function renderHistory() {
+            let logs = JSON.parse(localStorage.getItem('trash_logs') || '[]');
+            historyList.innerHTML = logs.map(l => `
+                <div class="history-item">
+                    <span>${l.text.substring(0, 30)}...</span>
+                    <div class="history-tag">${l.time}</div>
+                </div>
+            `).join('');
+        }
+
+        window.clearHistory = () => {
+            localStorage.removeItem('trash_logs');
+            renderHistory();
+        };
+    </script>
+</body>
+</html>
